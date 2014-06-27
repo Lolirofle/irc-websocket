@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+		<style>
+			body{
+				background-color:#F3EEE1;
+			}
+
+			#title{
+				font-size:200%;
+				font-weight:bold;
+			}
+
+			#connected{
+				color:gray;
+				font-size:80%;
+			}
+
+			#messageSender{
+				height:3em;
+			}
+
+			#messageSender #messageInput{
+				width:100%;
+				height:100%;
+			}
+
+			#messages{
+				width:100%;
+				height:256px;
+				overflow:auto;
+			}
+
+			#messages,
+			#messageInput{
+				font-family:"Courier New","monospace";
+				font-size:12px;
+			}
+
+			#messages .time{
+				display:inline;
+				color:gray;
+				margin-right:1ex;
+			}
+
+			#messages .time:before{
+				content:"[";
+			}
+
+			#messages .time:after{
+				content:"]";
+			}
+
+			#messages .text{
+				display:inline;
+			}
+
+			#messages .title{
+				display:inline;
+				font-weight:bold;
+				margin-right:1ex;
+			}
+
+			#messages .message3 .title:after{
+				content:":";
+			}
+
+			table{
+				width:100%;
+				height:100%;
+				table-layout:fixed;
+			}
+		</style>
+		<script type="text/javascript">
+			function zeroPad(str,len){
+				str=str.toString();
+				var repeat=len-str.length;
+				if(repeat>0)
+					return Array(repeat+1).join("0")+str;
+				else
+					return str;
+			}
+
+			$(function() {
+				window.WebSocket = window.WebSocket || window.MozWebSocket;
+
+				var websocket = new WebSocket('ws://flygande-toalett.tk:2001','lolirofle-echo');
+
+				websocket.onopen = function(){
+					$('#connected').append('Connected to server');
+					$("#messageInput").prop('disabled',false);
+					$("#messageSend").prop('disabled',false);
+					$("#nickChange").prop('disabled',false);
+				};
+
+				websocket.onerror = function(){
+					$('#connected').append('Not connected to server');
+				};
+
+				websocket.onmessage = function(message){
+					var now = new Date();
+					var messageType=message.data.charCodeAt(0);
+					var title="";
+					var text="";
+
+					switch(messageType){
+						case 1:
+							title=message.data.substring(1);
+							text="connected";
+							break;
+						case 2:
+							title=message.data.substring(1);
+							text="disconnected";
+							break;
+						case 3:
+							messageSeparator=message.data.indexOf(":");
+							
+							title=message.data.substring(1,messageSeparator);
+							text=message.data.substring(messageSeparator+1);
+							break;
+						case 4:
+							messageSeparator=message.data.indexOf(":");
+							
+							title=message.data.substring(1,messageSeparator);
+							text="changed nickname to "+message.data.substring(messageSeparator+1);
+							break;
+					}
+
+					if(text){
+						$('#messages').append(
+							$('<div>')
+								.addClass('message'+messageType)
+								.append($('<div>',{text: zeroPad(now.getHours(),2)+":"+zeroPad(now.getMinutes(),2)+":"+zeroPad(now.getSeconds(),2)}).addClass('time'))
+								.append($('<div>',{text: title}).addClass('title'))
+								.append($('<div>',{text: text}).addClass('text'))
+						);
+					}
+
+					//Scroll to bottom
+					var elem=document.getElementById("messages");
+					elem.scrollTop=elem.scrollHeight;
+				};
+				
+				$('#messageSend').click(function(e){
+					e.preventDefault();
+					if($('#messageInput').val()){
+						websocket.send(String.fromCharCode(3)+$('#messageInput').val());
+						$('#messageInput').val('');
+					}
+				});
+
+				$('#nickChange').click(function(e){
+					e.preventDefault();
+
+					var name = prompt("New nickname","");
+					if(name!=null){
+						websocket.send(String.fromCharCode(4)+name);
+					} 
+				});
+			});
+		</script>
+		</head>
+	<body>
+		<div id="title">Webchat</div>
+		<div id="connected"></div>
+		<table>
+			<tr><td><div id="messages"></div></td></tr>
+			<tr>
+				<td id="messageSender">
+					<form>
+						<input type="text" id="messageInput" disabled maxlength="512" autofocus autocomplete="off" />
+						<button id="messageSend" disabled>Send</button>
+						<button id="nickChange" disabled>Nickname</button>
+					</form>
+				</td>
+			</tr>
+		</table>
+	</body>
+</html>

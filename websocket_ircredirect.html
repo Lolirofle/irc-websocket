@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Flygande Toalett Chatt</title>
+		<meta charset="utf-8">
+		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+		<style>
+			body{
+				background-color:#F3EEE1;
+			}
+
+			#title{
+				font-size:200%;
+				font-weight:bold;
+			}
+
+			#connected{
+				color:gray;
+				font-size:80%;
+			}
+
+			#messageSender{
+				width:100%;
+			}
+
+			#messageSender #messageInput{
+				width:100%;
+			}
+
+			#messages{
+				width:100%;
+				height:100%;
+				overflow:auto;
+				white-space:pre-wrap;
+			}
+
+			#messages,
+			#messageInput{
+				font-family:"Courier New","monospace";
+				font-size:14px;
+			}
+
+			#messages .time{
+				display:inline;
+				color:gray;
+				margin-right:1ex;
+			}
+
+			#messages .time:before{
+				content:"[";
+			}
+
+			#messages .time:after{
+				content:"]";
+			}
+
+			#messages .text{
+				display:inline;
+			}
+
+			#messages .title{
+				display:inline;
+				font-weight:bold;
+				margin-right:1ex;
+			}
+
+			#messages .message .title:after{
+				content:":";
+			}
+
+			table{
+				position:absolute;
+				left:0;
+				right:0;
+				bottom:0;
+				width:100%;
+				height:100%;
+				padding-top:64px;
+			}
+
+			#messagesRow{
+				height:100%
+			}
+
+			#messageSend{
+				width:100%;
+			}
+		</style>
+		<script type="text/javascript">
+			function zeroPad(str,len){
+				str=str.toString();
+				var repeat=len-str.length;
+				if(repeat>0)
+					return Array(repeat+1).join("0")+str;
+				else
+					return str;
+			}
+
+			$(function() {
+				window.WebSocket = window.WebSocket || window.MozWebSocket;
+
+				var websocket = new WebSocket('ws://flygande-toalett.tk:1569','lolirofle-ircredirect');
+
+				//"Connecting" text dots
+				var dotIncrement=setInterval(function(){
+					if(websocket.readyState==0){
+						document.getElementById('connected').innerHTML+='.';
+					}else
+						clearInterval(dotIncrement);
+				},1000);
+
+				websocket.onopen = function(){
+					document.getElementById('connected').innerHTML='Connected to server';
+					document.getElementById("messageInput").disabled=false;
+					document.getElementById("messageSend").disabled=false;
+					document.getElementById("nickChange").disabled=false;
+				};
+
+				websocket.onerror = function(){
+					document.getElementById('connected').innerHTML='Not connected to server';
+					document.getElementById("messageInput").disabled=true;
+					document.getElementById("messageSend").disabled=true;
+					document.getElementById("nickChange").disabled=true;
+				};
+
+				websocket.onmessage = function(message){
+					var now = new Date();
+					$('#messages').append(
+						$('<div>')
+							.append($('<div>',{text: zeroPad(now.getHours(),2)+":"+zeroPad(now.getMinutes(),2)+":"+zeroPad(now.getSeconds(),2)}).addClass('time'))
+							.append($('<div>',{text: message.data}).addClass('text'))
+					);
+
+					//Scroll to bottom
+					var elem=document.getElementById("messages");
+					elem.scrollTop=elem.scrollHeight;
+				};
+				
+				$('#messageSend').click(function(e){
+					e.preventDefault();
+					if($('#messageInput').val()){
+						//Send to server
+						websocket.send($('#messageInput').val());
+
+						//Output to browser
+						var now = new Date();
+						$('#messages').append(
+							$('<div>')
+								.append($('<div>',{text: zeroPad(now.getHours(),2)+":"+zeroPad(now.getMinutes(),2)+":"+zeroPad(now.getSeconds(),2)}).addClass('time'))
+								.append($('<div>',{text: "Me"}).addClass('title'))
+								.append($('<div>',{text: $('#messageInput').val()}).addClass('text'))
+								.addClass('message')
+						);
+						
+						//Clear input box
+						$('#messageInput').val('');
+					}
+				});
+
+				$('#nickChange').click(function(e){
+					e.preventDefault();
+
+					var name = prompt("New nickname","");
+					if(name!=null){
+						websocket.send("/nick "+name);
+					} 
+				});
+			});
+		</script>
+		</head>
+	<body>
+		<div id="title">Flygande Toalett IRC Chat Redirect</div>
+		<div id="connected">Connecting</div>
+		<table>
+			<tr id="messagesRow"><td colspan="2"><div id="messages"></div></td></tr>
+			<form style="display:table-row;" target="#">
+				<td id="messageSender">
+					<input type="text" id="messageInput" disabled maxlength="512" autofocus autocomplete="off" />
+				</td>
+				<td id="messageSenderButtons">
+					<input type=submit id="messageSend" disabled value="Send" />
+					<button id="nickChange" disabled>Nickname</button>
+				</td>
+			</form>
+		</table>
+	</body>
+</html>
