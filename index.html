@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Flygande Toalett IRC</title>
+		<meta charset="utf-8">
+		<style>
+			body{
+				height:100%;
+				margin:0;
+			}
+
+			body,
+			#header{
+				background-color:#F3EEE1;
+				width:100%;
+			}
+
+			#header{
+				position:fixed;
+				padding:4px;
+				z-index:10;
+			}
+
+			#header #title{
+				font-size:28px;
+				font-weight:bold;
+			}
+
+			#header #connected{
+				color:gray;
+				font-size:80%;
+			}
+
+			#status>*,
+			#status section,
+			#settings section>*{
+				display:inline;
+			}
+
+			#settings{
+				float:right;
+			}
+
+			#settings #connectButton{
+				display:none;
+			}
+
+			#settings section .title{
+				font-size:9px;
+				color:gray;
+			}
+
+			#settings section input{
+				font-size:10px;
+			}
+
+			.connection .input,
+			.connection .input .message{
+				width:100%;
+			}
+
+			.connection .messagesCell{
+				width:100%;
+				height:100%;
+				vertical-align:top;
+			}
+
+			.connection .messages{
+				overflow:hidden;
+				white-space:pre-wrap;
+				vertical-align:top;
+			}
+
+			.connection .messages,
+			#messageInput{
+				font-family:"Courier New","monospace";
+				font-size:14px;
+			}
+
+			.connection .messages .message .time{
+				display:inline;
+				color:gray;
+				margin-right:1ex;
+			}
+
+			.connection .messages .message .time:before{
+				content:"[";
+			}
+
+			.connection .messages .message .time:after{
+				content:"]";
+			}
+
+			.connection .messages .message .text{
+				display:inline;
+			}
+
+			.connection .messages .message .title{
+				display:inline;
+				font-weight:bold;
+				margin-right:1ex;
+			}
+
+			.connection .messages .message .title:after{
+				content:":";
+			}
+
+			.connection{
+				display:table;
+				position:absolute;
+				left:0;
+				right:0;
+				top:4em;
+				bottom:0;
+			}
+
+			.connection form{
+				display:table-row;
+			}
+
+			.connection:first-child{
+				height:100%
+			}
+
+			.message-ERROR>.text{
+				color:#C20;
+				font-weight:bold;
+			}
+
+			.message-NOTICE>.text{
+				color:gray;
+			}
+
+			.message-TOPIC>.text>*{
+				display:inline;
+				font-style:italic;
+			}
+			.message-TOPIC>.text>.topic:before{
+				content:"Changed topic to ";
+				color:gray;
+				font-style:normal;
+			}
+			.message-TOPIC>.text>.channel:before{
+				content:" in ";
+				color:gray;
+				font-weight:normal;
+			}
+
+			.channel{
+				color:orange;
+				font-weight:bold;
+			}
+		</style>
+		<script type="text/javascript" src="irc_client.js"></script>
+		<script type="text/javascript">
+			function zeroPad(str,len){
+				str=str.toString();
+				var repeat=len-str.length;
+				if(repeat>0)
+					return Array(repeat+1).join("0")+str;
+				else
+					return str;
+			}
+
+			//http://stackoverflow.com/a/4835406
+			function escapeHtml(text){
+				var map = {
+					'&': '&amp;',
+					'<': '&lt;',
+					'>': '&gt;',
+					'"': '&quot;',
+					"'": '&#039;'
+				};
+				return text.replace(/[&<>"']/g,function(m){return map[m];});
+			}
+
+			function connectionElem_addMessage(connectionElem,title,text,messageType){
+				var now = new Date();
+				//Message container
+				var messagesElem = connectionElem.getElementsByClassName('messages')[0];
+				//New message
+				var messageElem  = document.createElement('div');
+					messageElem.className = 'message';
+					if(typeof messageType!=='undefined' && messageType!==null)
+						messageElem.className+= ' message-'+escapeHtml(messageType);
+					var messageTimeElem = document.createElement('div');
+						messageTimeElem.className = 'time';
+						messageTimeElem.innerHTML = zeroPad(now.getHours(),2)+":"+zeroPad(now.getMinutes(),2)+":"+zeroPad(now.getSeconds(),2);
+					messageElem.appendChild(messageTimeElem);
+					if(title!==null){
+						var messageTitleElem = document.createElement('div');
+							messageTitleElem.className = 'title';
+							messageTitleElem.innerHTML = escapeHtml(title);
+						messageElem.appendChild(messageTitleElem);
+					}
+					var messageTextElem = document.createElement('div');
+						messageTextElem.className = 'text';
+						messageTextElem.innerHTML = text;
+					messageElem.appendChild(messageTextElem);
+				messagesElem.appendChild(messageElem);
+
+				//Scroll to bottom
+				location.hash = "#input";
+			}
+
+			function connectionElem_sendMessage(connectionElem,websocket){
+				var inputElem = websocket.connectionElem.getElementsByClassName('input')[0].getElementsByClassName('message')[0];
+
+				if(inputElem.value!==""){
+					var input = "";
+					//Check if not command
+					if(inputElem.value.charAt(0)==='/')
+						input = inputElem.value.substr(1);
+					else
+						input = "PRIVMSG #toa :"+inputElem.value;
+
+					//Send to server
+					irc_sendMessage(websocket,input);
+
+					//Output to browser
+					connectionElem_addMessage(connectionElem,'Me',escapeHtml(inputElem.value));
+					
+					//Clear input box
+					inputElem.value = "";
+
+					//Focus
+					inputElem.focus();
+				}
+			}
+
+			function irc_sendMessage(websocket,message){
+				websocket.send(message + "\r\n");
+			}
+
+			var ircSocket = null;
+
+			window.onload = function(){
+				window.WebSocket = window.WebSocket || window.MozWebSocket;
+
+				//Connect button
+				document.getElementById('connectButton').form.addEventListener('submit',function(e){
+					e.preventDefault();
+
+					var username = document.getElementById("username").getElementsByTagName("INPUT")[0];
+					var nickname = document.getElementById("nickname").getElementsByTagName("INPUT")[0];
+					username.checkValidity();
+					nickname.checkValidity();
+					username = username.value;
+					nickname = nickname.value;
+
+					var websocket = ircSocket = new WebSocket('ws://irc.flygande-toalett.tk:1569','irc');
+					//var websocket = new WebSocket('ws://127.0.0.1:2001','test');
+					websocket.connectionElem = document.getElementsByClassName('connection')[0];
+					document.getElementById('connected').innerHTML='Connecting';
+
+					//Send button
+					websocket.connectionElem.getElementsByClassName('messageSend')[0].addEventListener('click',function(e){
+						e.preventDefault();
+						connectionElem_sendMessage(websocket.connectionElem,websocket);
+					});
+
+					//"Connecting" text dots
+					var dotIncrement=setInterval(function(){
+						if(websocket.readyState==0){
+							websocket.connectionElem.getElementsByClassName('connected').innerHTML+='.';
+						}else
+							clearInterval(dotIncrement);
+					},1000);
+
+					websocket.onopen = function(){
+						document.getElementById('connected').innerHTML='Connected to server';
+						var inputs = this.connectionElem.getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=false;
+
+						inputs = document.getElementById("settings").getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=true;
+					
+						irc_sendMessage(ircSocket,"NICK "+nickname);
+						irc_sendMessage(ircSocket,"USER "+username+" 0 0 "+username);
+					};
+
+					websocket.onclose = function(e){
+						document.getElementById('connected').innerHTML='Not connected to server ('+e.code+')';
+						var inputs = this.connectionElem.getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=true;
+
+						inputs = document.getElementById("settings").getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=false;
+					};
+
+					websocket.onerror = function(){
+						document.getElementById('connected').innerHTML='Unable to connect to server';
+						var inputs = this.connectionElem.getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=true;
+
+						inputs = document.getElementById("settings").getElementsByTagName("INPUT");
+						for(var i=inputs.length-1; i>=0; i--)
+							inputs[i].disabled=false;
+					};
+
+					websocket.onmessage = function(message){
+						var this_ = this;
+						try{
+							irc_parseMessage(message.data,function(m){
+								switch(m.command.type){
+									case IrcMessage_CommandType.PING:
+										irc_sendMessage(ircSocket,"PONG :"+m.command.ping.from);
+										break;
+
+									case IrcMessage_CommandType.RPL_WELCOME:
+									case "001":
+										irc_sendMessage(ircSocket,"JOIN #toa");
+									default:
+										var title = "";
+										switch(m.prefix.type){
+											case IrcMessage_Prefix.UNDETERMINED:
+											case IrcMessage_Prefix.NONE:
+												title = null;
+												break;
+											case IrcMessage_Prefix.USER:
+												title = m.prefix.nickname;
+												break;
+											case IrcMessage_Prefix.SERVER:
+												title = "Server ("+m.prefix.name+")";
+												break;
+										}
+										var text = "";
+										switch(m.command.type){
+											case IrcMessage_CommandType.PRIVMSG:
+												text = escapeHtml(m.command.privmsg.text);
+												break;
+											case IrcMessage_CommandType.NOTICE:
+												text = escapeHtml(m.command.notice.text);
+												break;
+											case IrcMessage_CommandType.ERROR:
+												text = escapeHtml(m.command.error.message);
+												break;
+											case IrcMessage_CommandType.TOPIC:
+												text = '<div class="topic">'+escapeHtml(m.command.topic.text)+'</div><div class="channel">'+escapeHtml(m.command.topic.channel)+'</div>';
+												break;
+											default:
+												if(typeof m.command.unknown!=='undefined')
+													text = escapeHtml(m.command.unknown.text.join());
+												else
+													text = escapeHtml(message.data);
+												break;
+										}
+										connectionElem_addMessage(this_.connectionElem,title,text,m.command.type);
+										break;
+								}
+							});
+						}catch(e){
+							connectionElem_addMessage(this_.connectionElem,"Server",escapeHtml(message.data),'UNKNOWN');
+							throw e;
+						}
+					};
+				});
+			};
+
+			window.onbeforeunload = function(){
+				if(ircSocket!==null && ircSocket.readyState==1)
+					return "Are you sure that you want to leave this page? There are still open connections.";
+			}
+
+			window.onunload = function(){
+				//If connection is open
+				if(ircSocket!==null && ircSocket.readyState==1){
+					irc_sendMessage(ircSocket,"QUIT");
+				}
+			}
+		</script>
+		</head>
+	<body>
+		<div id="header">
+			<div id="title">Flygande Toalett IRC</div>
+			<div id="status">
+				<div id="connected">Not connecting</div>
+				<form id="settings">
+					<section id="username"><div class="title">Username</div><input type="text" pattern="[A-Za-z0-9_-]+" maxlength=32 /></section>
+					<section id="nickname"><div class="title">Nickname</div><input type="text" pattern="[A-Za-z0-9_-]+" maxlength=32 /></section>
+					<input id="connectButton" type="submit" value="Connect" />
+				</form>
+			</div>
+		</div>
+		<table class="connection">
+			<tr>
+				<td class="messagesCell"><div class="messages"></div></td>
+			</tr>
+			<form target="#">
+				<td class="input">
+					<input id="input" type="text" class="message" disabled maxlength="512" autofocus autocomplete="off" />
+				</td>
+				<td class="senderButtons">
+					<input type=submit class="messageSend" disabled value="Send" />
+				</td>
+			</form>
+		</table>
+	</body>
+</html>
